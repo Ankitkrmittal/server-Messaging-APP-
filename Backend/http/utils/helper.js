@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import dns from "node:dns";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+
+// Some deploy targets do not have outbound IPv6 routing.
+// Prefer IPv4 so SMTP connections to Gmail do not fail with ENETUNREACH.
+dns.setDefaultResultOrder("ipv4first");
 
 function generateOtp(length = 6) {
   return Array.from({ length }, () => Math.floor(Math.random() * 10)).join("");
@@ -22,10 +27,15 @@ function getTransporter() {
   }
 
   return nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: {
       user: EMAIL_USER,
       pass: EMAIL_PASS,
+    },
+    tls: {
+      servername: "smtp.gmail.com",
     },
   });
 }
