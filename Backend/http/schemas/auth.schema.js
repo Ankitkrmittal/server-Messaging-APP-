@@ -27,10 +27,10 @@ export const signinSchema = z.object({
 
 export const verifyOtpSchema = z.object({
     email: z.string().trim().toLowerCase().email("Invalid email format"),
-    otp: z
+    otp: z.coerce
         .string()
         .trim()
-        .length(6, "OTP must be 6 digits"),
+        .regex(/^\d{6}$/, "OTP must be 6 digits"),
 });
 
 export const resendOtpSchema = z.object({

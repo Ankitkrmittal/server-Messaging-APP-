@@ -1,28 +1,54 @@
-import NodemailerHelper from 'nodemailer-otp';
-import dotenv from 'dotenv';
+import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-// Load environment variables from .env file
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+
+function generateOtp(length = 6) {
+  return Array.from({ length }, () => Math.floor(Math.random() * 10)).join("");
+}
+
+function getTransporter() {
+  const { EMAIL_USER, EMAIL_PASS } = process.env;
+
+  if (!EMAIL_USER || !EMAIL_PASS) {
+    const err = new Error("Email service is not configured. Set EMAIL_USER and EMAIL_PASS in Backend/.env.");
+    err.status = 500;
+    throw err;
+  }
+
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: EMAIL_USER,
+      pass: EMAIL_PASS,
+    },
+  });
+}
 
 export async function sendMail(email) {
-   try {
-      const helper = new NodemailerHelper(process.env.EMAIL_USER, process.env.EMAIL_PASS);
+  const otp = generateOtp(6);
+  const transporter = getTransporter();
 
-      const otp = helper.generateOtp(6);
-      console.log(`Generated OTP: ${otp}`);
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "OTP Authentication",
+      text: `Your OTP is ${otp}. It expires in 5 minutes.`,
+      html: `<p>Your OTP is <strong>${otp}</strong>.</p><p>It expires in 5 minutes.</p>`,
+    });
 
-
-      await helper.sendEmail(`${email}`,'OTP-Authentication','Enter this code to Authenticate', otp)
-      return {
-        otp
-      }
-      
-  
-   } catch (error) {
-        console.log(error);
-        return error
-   }
+    return { otp };
+  } catch (error) {
+    const err = new Error(error?.message || "Unable to send OTP email");
+    err.status = 500;
+    throw err;
+  }
 }
 
 
