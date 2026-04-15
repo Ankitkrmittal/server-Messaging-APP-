@@ -17,6 +17,10 @@ function generateOtp(length = 6) {
   return Array.from({ length }, () => Math.floor(Math.random() * 10)).join("");
 }
 
+function getFromAddress() {
+  return process.env.EMAIL_FROM || process.env.EMAIL_USER;
+}
+
 function getTransporter() {
   const { EMAIL_USER, EMAIL_PASS } = process.env;
 
@@ -37,21 +41,75 @@ function getTransporter() {
     tls: {
       servername: "smtp.gmail.com",
     },
+    family: 4,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
   });
+}
+
+function getAlternateTransporter() {
+  const { EMAIL_USER, EMAIL_PASS } = process.env;
+
+  return nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    auth: {
+      user: EMAIL_USER,
+      pass: EMAIL_PASS,
+    },
+    tls: {
+      servername: "smtp.gmail.com",
+    },
+    family: 4,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+  });
+}
+
+function isRetryableSmtpError(error) {
+  const message = error?.message || "";
+
+  return [
+    "ENETUNREACH",
+    "ECONNECTION",
+    "ETIMEDOUT",
+    "ESOCKET",
+    "ECONNRESET",
+    "EHOSTUNREACH",
+  ].some((code) => message.includes(code) || error?.code === code);
+}
+
+async function sendWithSmtp({ email, otp }) {
+  const transporter = getTransporter();
+  const mailOptions = {
+    from: getFromAddress(),
+    to: email,
+    subject: "OTP Authentication",
+    text: `Your OTP is ${otp}. It expires in 5 minutes.`,
+    html: `<p>Your OTP is <strong>${otp}</strong>.</p><p>It expires in 5 minutes.</p>`,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    if (!isRetryableSmtpError(error)) {
+      throw error;
+    }
+
+    const fallbackTransporter = getAlternateTransporter();
+    await fallbackTransporter.sendMail(mailOptions);
+  }
 }
 
 export async function sendMail(email) {
   const otp = generateOtp(6);
-  const transporter = getTransporter();
 
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "OTP Authentication",
-      text: `Your OTP is ${otp}. It expires in 5 minutes.`,
-      html: `<p>Your OTP is <strong>${otp}</strong>.</p><p>It expires in 5 minutes.</p>`,
-    });
+    await sendWithSmtp({ email, otp });
 
     return { otp };
   } catch (error) {
